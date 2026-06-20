@@ -116,10 +116,10 @@ the problem: `"C compiler command"` and `"Haskell CPP command"`, both pointing a
 `x86_64-conda-linux-gnu-gcc`. On this machine they were repointed to the system
 `cc` (a backup of the original sits next to it as `settings.orig`).
 
-The `settings` file lives at:
+The `settings` file lives under the active mise GHC install. Resolve it with:
 
-```text
-/home/hsugi/.local/share/mise/installs/ghc/8.10.7/lib/ghc-8.10.7/settings
+```bash
+SETTINGS="$(mise where ghc)/lib/ghc-8.10.7/settings"
 ```
 
 Exact reproduction (back it up first, then repoint conda's gcc to `cc`):
@@ -131,11 +131,12 @@ cp -n "$SETTINGS" "$SETTINGS.orig"            # one-time backup -> settings.orig
 sed -i 's/x86_64-conda-linux-gnu-gcc/cc/g' "$SETTINGS"
 ```
 
-The literal one-liner against the absolute path above is equivalent:
+If your GHC lives somewhere else, keep using the `mise where ghc` form rather
+than hard-coding a machine-specific path:
 
 ```bash
 sed -i 's/x86_64-conda-linux-gnu-gcc/cc/g' \
-  /home/hsugi/.local/share/mise/installs/ghc/8.10.7/lib/ghc-8.10.7/settings
+  "$SETTINGS"
 ```
 
 (This is an alternative to the `./toolchain/` shims described above: the shims
