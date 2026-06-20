@@ -87,6 +87,9 @@ Web3 / toy blockchain:
 python3 languages/web3/blockchain/test_chain.py
 ```
 
+See `languages/web3/blockchain/README.md` for the package map and the
+invariants that make the chain validation exercise useful.
+
 Functional programming basics:
 
 ```bash
@@ -100,7 +103,7 @@ languages/
   c/        # hashtable and memory ownership basics
   rust/     # typed CLI/store exercise
   zig/      # arrays, ring buffers, comptime-friendly basics
-  haskell/  # pure functions and cabal project layout
+  haskell/  # pure functions, a tiny CLI shell, and cabal project layout
   lisp/     # macros, conditions, packages, data modeling
   cobol/    # batch-style payroll processing
   ml/       # ML algorithms from scratch in Python
