@@ -1,6 +1,6 @@
 # Learning Programming Languages
 
-Small runnable language labs for C, Rust, Zig, Haskell, Common Lisp, COBOL, ML from scratch, and Web3/blockchain basics.
+Small runnable language labs for C, Rust, Zig, Haskell, Common Lisp, COBOL, ML from scratch, Web3/blockchain basics, and functional programming.
 
 Last verified: 2026-06-21
 
@@ -23,12 +23,12 @@ If a language tool is missing locally, enter the Nix shell first:
 nix develop
 ```
 
-Python-only projects:
-
-```bash
-python3 languages/ml/src/test_ml.py
-python3 languages/web3/blockchain/test_chain.py
-```
+> **No Nix? Use mise.** On machines without Nix, `zig`, `ghc` / `runghc`,
+> `cabal`, and `sbcl` are not on `PATH`. Prefix those commands with
+> `mise exec --`, e.g. `mise exec -- zig build test` or
+> `mise exec -- sbcl --script test/test.lisp`. `cargo` and `make` work directly.
+> The per-language commands below already use the `mise exec --` form where it is
+> needed.
 
 C:
 
@@ -48,21 +48,24 @@ Zig:
 
 ```bash
 cd languages/zig
-zig build test
+mise exec -- zig build test
 ```
 
-Haskell:
+Haskell (offline `runghc`; no package downloads):
 
 ```bash
 cd languages/haskell
-cabal test
+mise exec -- runghc -isrc app/Main.hs    # run the demo
+mise exec -- runghc -isrc test/Spec.hs   # run the test suite
 ```
+
+(The Nix / upgrade path uses `cabal test` instead; see `languages/haskell/README.md`.)
 
 Common Lisp:
 
 ```bash
 cd languages/lisp
-sbcl --script test/test.lisp
+mise exec -- sbcl --script test/test.lisp
 ```
 
 COBOL:
@@ -70,6 +73,24 @@ COBOL:
 ```bash
 cd languages/cobol
 ./test.sh
+```
+
+ML from scratch:
+
+```bash
+python3 languages/ml/src/test_ml.py
+```
+
+Web3 / toy blockchain:
+
+```bash
+python3 languages/web3/blockchain/test_chain.py
+```
+
+Functional programming basics:
+
+```bash
+node topics/functional-programming-basics/result.test.mjs
 ```
 
 ## Directory Map
@@ -84,6 +105,8 @@ languages/
   cobol/    # batch-style payroll processing
   ml/       # ML algorithms from scratch in Python
   web3/     # toy blockchain data model and validation
+topics/
+  functional-programming-basics/
 ```
 
 ## What Belongs Elsewhere

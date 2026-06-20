@@ -58,7 +58,8 @@ const Options = struct {
     top: ?usize = null, // optional limit on rows printed
 };
 
-/// This module's own error cases, unioned later with the std errors we let
+/// This module's own named error set. `parseArgs` returns it as part of an
+/// inferred error union (`!Options`), alongside the std errors it lets
 /// propagate. Naming the set lets callers exhaustively reason about failure.
 const CliError = error{InvalidTopArgument};
 
@@ -102,6 +103,13 @@ fn run(gpa: Allocator, tmp: Allocator, io: std.Io, out: *std.Io.Writer, args: st
     }
 }
 
+/// Parse the value following `--top` into a row limit, mapping any non-numeric
+/// (or otherwise invalid) text to this module's named `error.InvalidTopArgument`.
+/// Factored out of `parseArgs` so the error path is directly unit-testable.
+fn parseTopValue(value: []const u8) CliError!usize {
+    return std.fmt.parseInt(usize, value, 10) catch CliError.InvalidTopArgument;
+}
+
 /// Parse argv into `Options`. Returns a named error on a bad `--top` value.
 /// `tmp` is an arena, so the materialized argv slice needs no manual free.
 fn parseArgs(tmp: Allocator, args: std.process.Args) !Options {
@@ -114,8 +122,7 @@ fn parseArgs(tmp: Allocator, args: std.process.Args) !Options {
         if (std.mem.eql(u8, arg, "--top")) {
             i += 1;
             if (i >= argv.len) return CliError.InvalidTopArgument;
-            opts.top = std.fmt.parseInt(usize, argv[i], 10) catch
-                return CliError.InvalidTopArgument;
+            opts.top = try parseTopValue(argv[i]);
         } else {
             // First non-flag argument is the input file path.
             opts.file_path = arg;
@@ -182,4 +189,11 @@ test "limit math: --top clamps to available rows" {
     const opt_top: ?usize = 5;
     const limit = if (opt_top) |n| @min(n, entries_len) else entries_len;
     try testing.expectEqual(@as(usize, 2), limit);
+}
+
+test "--top with a non-numeric value yields error.InvalidTopArgument (error path)" {
+    try testing.expectError(error.InvalidTopArgument, parseTopValue("notanumber"));
+    try testing.expectError(error.InvalidTopArgument, parseTopValue("-1"));
+    // A valid value parses to the expected usize.
+    try testing.expectEqual(@as(usize, 5), try parseTopValue("5"));
 }

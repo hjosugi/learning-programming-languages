@@ -90,9 +90,10 @@ size_t ht_capacity(const hashtable *ht);
  * Returns a freshly malloc'd array of `ht_size(ht)` BORROWED `const char *`
  * (pointing into the table). The CALLER owns and must free() the array; the
  * strings stay owned by the table. When `out_count` != NULL it receives the
- * length. Returns NULL on allocation failure or NULL table. For an empty table
- * returns a valid pointer (malloc(0)-style) with *out_count == 0... we return
- * NULL with *out_count 0 to keep it simple - see impl.
+ * length.
+ * Returns NULL (and sets *out_count to 0 when out_count != NULL) on allocation
+ * failure, for a NULL table, or for an empty table -- in the empty/NULL cases
+ * there is simply nothing to return and the caller frees nothing.
  */
 const char **ht_keys(const hashtable *ht, size_t *out_count);
 

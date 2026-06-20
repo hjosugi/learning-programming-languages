@@ -2,8 +2,10 @@
 ;;;;
 ;;;; This file only DEFINES tests via the project's DEFTEST/IS DSL; it does not
 ;;;; run them or exit.  Two entry points reuse it:
-;;;;   * test/test.lisp     -- plain `sbcl --script` runner (exits 0/1).
-;;;;   * test/asdf-tests.lisp -- the ASDF test-op component.
+;;;;   * test/test.lisp -- plain `sbcl --script` runner (exits 0/1).
+;;;;   * shapes.asd      -- loads this file as the `#:shapes/test` system and
+;;;;                        runs it from the ASDF test-op (defined inline there
+;;;;                        via `:perform`, calling RUN-TESTS).
 ;;;;
 ;;;; It assumes the SHAPES system is already loaded.
 

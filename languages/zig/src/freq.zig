@@ -26,9 +26,10 @@ pub const Entry = struct {
     freq: u32,
 };
 
-/// Everything `count` can fail with. Built by unioning the std error set we
-/// propagate (`Allocator.Error`) with this module's own cases. Naming the set
-/// lets callers exhaustively `switch` on errors.
+/// Everything `count` can fail with. Today the only failure is allocation, so
+/// this is simply an alias for the std `Allocator.Error` set; naming it gives a
+/// stable type callers can `switch` on, and a single place to extend (e.g. with
+/// `|| error{...}`) if this module grows its own failure cases.
 pub const CountError = Allocator.Error;
 
 /// A word is a maximal run of ASCII letters/digits; everything else is a

@@ -107,6 +107,41 @@ discovers this config from any directory). On a machine whose GHC already points
 at a valid toolchain, the shims simply forward to the same compilers and nothing
 changes.
 
+## Troubleshooting
+
+**`runghc` fails with `x86_64-conda-linux-gnu-gcc: not found` (or similar).**
+The GHC 8.10.7 here was produced by a conda build, so its bundled `settings`
+file names a conda C toolchain that cannot execute on this host. Two entries are
+the problem: `"C compiler command"` and `"Haskell CPP command"`, both pointing at
+`x86_64-conda-linux-gnu-gcc`. On this machine they were repointed to the system
+`cc` (a backup of the original sits next to it as `settings.orig`).
+
+The `settings` file lives at:
+
+```text
+/home/hsugi/.local/share/mise/installs/ghc/8.10.7/lib/ghc-8.10.7/settings
+```
+
+Exact reproduction (back it up first, then repoint conda's gcc to `cc`):
+
+```bash
+# Resolve the path from mise (mise where ghc -> .../installs/ghc/8.10.7):
+SETTINGS="$(mise where ghc)/lib/ghc-8.10.7/settings"
+cp -n "$SETTINGS" "$SETTINGS.orig"            # one-time backup -> settings.orig
+sed -i 's/x86_64-conda-linux-gnu-gcc/cc/g' "$SETTINGS"
+```
+
+The literal one-liner against the absolute path above is equivalent:
+
+```bash
+sed -i 's/x86_64-conda-linux-gnu-gcc/cc/g' \
+  /home/hsugi/.local/share/mise/installs/ghc/8.10.7/lib/ghc-8.10.7/settings
+```
+
+(This is an alternative to the `./toolchain/` shims described above: the shims
+keep GHC's global `settings` untouched, whereas this edits them in place. Either
+one is enough to make `runghc` work; you do not need both.)
+
 ## Upgrade path
 
 This repo intentionally stays on `runghc` + `base` so it runs offline. When you
