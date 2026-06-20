@@ -1,0 +1,30 @@
+# C build artifacts
+bin/
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+a.out
+
+# debug / sanitizer / profiling output
+*.dSYM/
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+vgcore.*
+core
+core.*
+
+# editor / OS noise
+.cache/
+compile_commands.json
+.vscode/
+.idea/
+*.swp
+.DS_Store

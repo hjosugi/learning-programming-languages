@@ -1,0 +1,21 @@
+# Common Lisp / SBCL build artifacts
+*.fasl
+*.fas
+*.lx64fsl
+*.dx64fsl
+*.o
+*.so
+*.core
+# SBCL / ASDF compile cache (usually under ~/.cache, but ignore any local copy)
+.cache/
+**/.asdf/
+# Quicklisp local project symlinks (if you add Quicklisp later)
+quicklisp/
+.quicklisp/
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+*~
+\#*\#
+.\#*

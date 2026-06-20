@@ -1,0 +1,34 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build / packaging artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Coverage
+.coverage
+htmlcov/
+
+# Upgrade-path tooling (numpy/sklearn/pytorch experiments may add these)
+*.npy
+*.npz
+*.pt
+*.pth
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store

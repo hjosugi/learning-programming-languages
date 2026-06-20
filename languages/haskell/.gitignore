@@ -1,0 +1,35 @@
+# GHC / build artifacts
+*.hi
+*.o
+*.dyn_hi
+*.dyn_o
+*.p_o
+*.prof
+*.hp
+*.aux
+*.tix
+.hpc/
+
+# cabal
+dist/
+dist-newstyle/
+cabal.project.local
+cabal.project.local~
+.cabal-sandbox/
+cabal.sandbox.config
+.ghc.environment.*
+
+# stack (upgrade path)
+.stack-work/
+stack.yaml.lock
+
+# HLS / editor
+.hie/
+*.hie
+dist-*/
+.DS_Store
+.idea/
+.vscode/
+
+# NOTE: ./toolchain is intentionally tracked -- it holds the compiler shims
+# referenced by mise.toml so the runghc commands work on this machine.

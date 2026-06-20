@@ -1,0 +1,16 @@
+# Zig build artifacts
+zig-out/
+.zig-cache/
+zig-cache/
+
+# Compiled objects / binaries
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.dylib
+
+# Editor / OS noise
+.DS_Store
+*.swp

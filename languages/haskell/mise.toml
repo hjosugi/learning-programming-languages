@@ -1,0 +1,22 @@
+# mise config for this learning repo.
+#
+# Why this file exists:
+# The GHC 8.10.7 installed via mise on this machine was built expecting a conda
+# C toolchain (x86_64-conda-linux-gnu-gcc / -ld / -ar / -ranlib) that is not
+# present here. GHC needs a C compiler + linker even to *run* code with runghc
+# (for its CPP pass and the bytecode linker). Rather than patch GHC's global
+# `settings` file, we add tiny shim scripts in ./toolchain that forward those
+# conda tool names to the system gcc/ld/ar/ranlib, and put that directory on
+# PATH for anything launched through `mise exec --` from this repo.
+#
+# This keeps the run/test commands short and copy-pasteable:
+#   mise exec -- runghc -isrc app/Main.hs
+#
+# If your GHC's `settings` already points at a valid system toolchain, this
+# file is harmless (the shims simply forward to the same compilers).
+
+[tools]
+ghc = "8.10.7"
+
+[env]
+_.path = ["./toolchain"]

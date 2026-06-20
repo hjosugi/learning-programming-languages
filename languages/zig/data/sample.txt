@@ -1,0 +1,8 @@
+The quick brown fox jumps over the lazy dog.
+The dog was not amused, and the fox did not care.
+A fox is quick. A dog is loyal. The quick fox and the loyal dog
+were not friends, but the brown fox and the lazy dog shared the
+same field under the same sky, day after day, season after season.
+Zig is a small language. Zig is a fast language. Zig keeps things
+explicit: allocators are explicit, errors are explicit, and control
+flow is explicit. The compiler does the rest at comptime.

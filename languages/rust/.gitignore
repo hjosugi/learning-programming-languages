@@ -1,0 +1,16 @@
+# Rust / Cargo build artifacts
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo.lock: keep it for binaries, ignore for libraries. This crate ships a
+# binary, so committing Cargo.lock is the recommended practice — but with no
+# external dependencies it is trivial, so we leave it untracked to keep the
+# repo to source only. Uncomment the next line to commit it instead.
+Cargo.lock
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
