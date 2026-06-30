@@ -137,3 +137,17 @@ def compress(doc: Document) -> bytes:
     """Shrink a PDF by dropping unreferenced objects and Flate-encoding
     uncompressed streams. Lossless -- it never touches image samples."""
     return build_full(doc, recompress=True)
+
+
+def annotate(doc: Document, additions: dict) -> bytes:
+    """Add annotations without disturbing existing pages or content.
+
+    ``additions`` maps a 1-based page number to a list of annotation specs
+    built by :func:`pdftoolkit.annotations.text_note` /
+    :func:`pdftoolkit.annotations.highlight`.
+    """
+    pages = doc.pages()
+    _check_range(pages, list(additions.keys()))
+    specs = [(d, ref, inh, None) for d, ref, inh in pages]
+    annots_by_index = {page_no - 1: spec_list for page_no, spec_list in additions.items()}
+    return build_pages(specs, annots_by_index)

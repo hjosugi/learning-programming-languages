@@ -3,8 +3,10 @@
 A small, **dependency-free** PDF manipulation toolkit — the everyday operations
 of a lightweight cross-platform PDF editor (think Stirling-PDF / Xodo), built
 from scratch on the Python standard library. It parses real PDFs and rewrites
-them to reorder, cut, rotate, merge, split, and compress pages, plus turning
-images into a PDF.
+them to reorder, cut, rotate, merge, split, and compress pages, turn images
+into a PDF, and add **notes and highlights**. A built-in **tabbed browser app**
+opens files in tabs, views them, and annotates them — with optional **Google
+Drive** access over plain `urllib`.
 
 Last verified: 2026-06-30
 
@@ -40,21 +42,32 @@ this engine — that is the "advanced, later" part.
 | `split` | split into per-page or per-range files | split |
 | `img2pdf` | combine JPEG/PNG images into a PDF | image to PDF |
 | `compress` | drop unused objects + Flate-encode streams | compress |
+| `note` | add a sticky-note comment (memo) | add comment |
+| `highlight` | highlight a rectangle (marker) | highlighter |
+| `serve` | launch the tabbed browser viewer/editor | the app window |
+
+Notes and highlights are real PDF annotation objects (`/Text`, `/Highlight`):
+the page's content is never rewritten, so it stays lossless, and the annotations
+ride along through every other operation (compress, reorder, …). Note text is
+stored as UTF-16BE, so Japanese (and any other) text is preserved.
 
 ## How this is organized
 
 ```text
 topics/pdf-toolkit/
   pdftoolkit/
-    model.py      # the PDF object model (Name/String/Ref/Stream) + serializer
-    filters.py    # FlateDecode + PNG/TIFF predictors (only for structural streams)
-    parser.py     # tokenizer + recursive-descent object parser
-    document.py   # loader: xref tables, xref streams, object streams, page tree
-    builder.py    # deep-copy-with-renumbering, the garbage collector, the writer
-    ops.py        # the public verbs (reorder/select/delete/rotate/merge/split/compress)
-    images.py     # JPEG/PNG -> PDF
-    cli.py        # argparse front end
-    __main__.py   # `python3 -m pdftoolkit`
+    model.py       # the PDF object model (Name/String/Ref/Stream) + serializer
+    filters.py     # FlateDecode + PNG/TIFF predictors (only for structural streams)
+    parser.py      # tokenizer + recursive-descent object parser
+    document.py    # loader: xref tables, xref streams, object streams, page tree
+    builder.py     # deep-copy-with-renumbering, the garbage collector, the writer
+    ops.py         # page verbs (reorder/select/delete/rotate/merge/split/compress/annotate)
+    images.py      # JPEG/PNG -> PDF
+    annotations.py # sticky notes + highlights (with appearance streams)
+    storage.py     # storage providers: local disk + Google Drive (urllib only)
+    app.py         # the tabbed browser viewer/editor (stdlib http.server)
+    cli.py         # argparse front end
+    __main__.py    # `python3 -m pdftoolkit`
   tests/
     test_pdftoolkit.py  # stdlib-only; builds PDFs/PNGs/JPEG fixtures from scratch
     fixtures.py         # a tiny base64 JPEG so tests need no image library
@@ -92,16 +105,54 @@ python3 -m pdftoolkit img2pdf scan1.jpg scan2.png -o out.pdf --page a4
 
 # compress (lossless: garbage-collect + Flate-encode uncompressed streams)
 python3 -m pdftoolkit compress in.pdf out.pdf
+
+# add a sticky note (memo) at x,y in PDF points (origin bottom-left)
+python3 -m pdftoolkit note in.pdf out.pdf --page 1 --at 100,700 --text "要確認" --color pink
+
+# highlight (marker) a rectangle x0,y0,x1,y1
+python3 -m pdftoolkit highlight in.pdf out.pdf --page 1 --rect 72,710,360,730 --color yellow
 ```
 
 As a library:
 
 ```python
-from pdftoolkit import ops, images
+from pdftoolkit import ops, images, annotations
 doc = ops.load("in.pdf")
 open("first3.pdf", "wb").write(ops.select(doc, [1, 2, 3]))
 open("scan.pdf", "wb").write(images.images_to_pdf(["a.jpg", "b.png"], page="a4"))
+open("annotated.pdf", "wb").write(ops.annotate(doc, {
+    1: [annotations.text_note(100, 700, "メモ"),
+        annotations.highlight([(72, 710, 360, 730)], color=annotations.COLORS["green"])],
+}))
 ```
+
+## The tabbed app
+
+```bash
+python3 -m pdftoolkit serve --dir myfolder      # then open http://127.0.0.1:8000/
+```
+
+The page lists the PDFs in `--dir`, opens each in its own **tab**, renders it
+with the browser's built-in PDF viewer, and applies notes/highlights through the
+engine — saving the edit back to the file. The only runtime is Python's own
+`http.server`; the UI is one self-contained HTML page (no JS build, no CDN).
+
+### Google Drive
+
+Drive is a second storage source, spoken over its REST API with **only**
+`urllib` — no Google client library. Supply an OAuth2 access token with a Drive
+scope and a "drive" source appears in the app:
+
+```bash
+export GDRIVE_TOKEN="ya29...."          # an OAuth2 access token (drive scope)
+python3 -m pdftoolkit serve --dir myfolder
+```
+
+Then `list` / open / save-in-place all work against Drive. Getting the token is
+the user's one setup step (any OAuth2 flow — e.g. the OAuth Playground for a
+quick try, or your own client for the real thing); everything after that is
+plain HTTPS. Storage is pluggable (`storage.py`), so other backends slot in the
+same way.
 
 ## Test
 
@@ -111,10 +162,12 @@ Standard library only — no third-party packages, no network:
 python3 tests/test_pdftoolkit.py
 ```
 
-Expected: `39` tests, all passing. The suite builds its own source PDFs, PNGs
+Expected: `58` tests, all passing. The suite builds its own source PDFs, PNGs
 (grayscale / RGB / RGBA / palette), and an object-stream + xref-stream PDF
-*from raw bytes*, runs every operation, and checks the results by re-parsing
-the output with the toolkit's own reader — page identity is tracked by a marker
+*from raw bytes*, runs every operation (including annotations), exercises the
+web app's HTTP endpoints against a live local server, and checks the Drive
+adapter with a fake transport (no network). Results are verified by re-parsing
+output with the toolkit's own reader — page identity is tracked by a marker
 embedded in each page's content stream.
 
 ## How it works (the reading order)
@@ -154,7 +207,7 @@ reach into a fresh file, and renumber the references.**
 
 5. **`ops.py` — the verbs.** Thin glue: pick/reorder/duplicate the page list, set
    `/Rotate` overrides, concatenate page lists for merge, copy the whole catalog
-   for compress.
+   for compress, attach annotations to chosen pages.
 
 6. **`filters.py` / `images.py` — bytes in and out.** `filters.py` implements only
    what reading the *plumbing* needs: `FlateDecode` and PNG/TIFF predictors.
@@ -162,12 +215,27 @@ reach into a fresh file, and renumber the references.**
    (inflate, un-filter, split out alpha into a soft mask) — reusing the same PNG
    predictor code.
 
+7. **`annotations.py` — basic editing.** Notes and highlights are annotation
+   *objects* added to a page's `/Annots`, never edits to the content. Highlights
+   carry a generated appearance stream (translucent, *Multiply* blend) so they
+   show in every viewer. The builder injects them as it copies pages, so they
+   ride through every other operation.
+
+8. **`storage.py` / `app.py` — the editor surface.** `app.py` is a `http.server`
+   shell: one HTML page with tabs, a file list, the browser's PDF viewer in an
+   iframe, and an annotate panel that POSTs to the engine. `storage.py` is the
+   pluggable source — local disk, or Google Drive over `urllib`.
+
 ## Scope and limitations
 
 Honest about what "common operations first" leaves out:
 
-- **No content editing or rendering.** Text, annotations as drawn, and vector
-  graphics are copied, not interpreted. This is a page/file engine, not a renderer.
+- **No rendering, and no in-place content editing.** The toolkit does not
+  rasterize pages or rewrite existing text/vector content; it adds annotations
+  and rearranges objects. The app views PDFs through the *browser's* renderer.
+- **Annotations are coordinate-based.** The CLI/app take PDF points (origin
+  bottom-left). Click-to-place needs page rendering, so it is the next step for
+  the app, not part of this engine.
 - **`compress` is conservative and lossless.** It removes unreferenced objects and
   Flate-encodes streams that were stored uncompressed; it does **not** downsample
   images or subset fonts (that is the "advanced, later" work, and is lossy).
@@ -183,17 +251,19 @@ Honest about what "common operations first" leaves out:
 
 Each step is additive and keeps the core API:
 
-1. **Bookmarks/outlines & links.** Preserve `/Outlines` and remap `/Dest`
+1. **Click-to-place annotations.** Render page thumbnails (or use `pdf.js`) so
+   the app can map a click to PDF points — turning the coordinate form into a
+   point-and-drag highlighter.
+2. **More annotation types.** Free-text boxes, ink/freehand, underline, and
+   strike-out — all the same `/Annots` machinery with different subtypes.
+3. **Bookmarks/outlines & links.** Preserve `/Outlines` and remap `/Dest`
    targets through the same reference renumbering when selecting/reordering.
-2. **Stamps & page numbers.** Append a content stream + a font resource to each
-   page — the first step toward real annotation.
-3. **N-up & booklet imposition.** Place several source pages onto one output page
+4. **N-up & booklet imposition.** Place several source pages onto one output page
    with a `/XObject` form per source page and a placement matrix.
-4. **Lossy compression.** Re-encode image XObjects (downsample, JPEG) — needs a
+5. **Drive niceties.** Token refresh, a folder picker, and conflict handling on
+   save — building on the `urllib` adapter already here.
+6. **Lossy compression.** Re-encode image XObjects (downsample, JPEG) — needs a
    pixel pipeline, so it graduates beyond "stdlib only".
-5. **A GUI.** Drive this engine from a thumbnail grid (drag to reorder, click to
-   rotate/delete, drop images to import) — the Xodo-style editor on top of the
-   engine.
 
 ## Exercises
 

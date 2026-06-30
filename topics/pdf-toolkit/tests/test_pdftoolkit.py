@@ -12,22 +12,26 @@ Run directly::
     python3 topics/pdf-toolkit/tests/test_pdftoolkit.py
 """
 
+import json
 import os
 import re
 import sys
 import tempfile
+import threading
 import unittest
+import urllib.error
+import urllib.request
 import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from fixtures import TINY_JPEG  # noqa: E402
-from pdftoolkit import images, ops  # noqa: E402
+from pdftoolkit import annotations, images, ops  # noqa: E402
 from pdftoolkit.cli import build_parser, main, parse_pages  # noqa: E402
 from pdftoolkit.document import Document  # noqa: E402
 from pdftoolkit.filters import decode_stream  # noqa: E402
-from pdftoolkit.model import Name  # noqa: E402
+from pdftoolkit.model import Name, String  # noqa: E402
 
 
 # --- building PDF / PNG / JPEG fixtures from scratch ------------------------
@@ -125,6 +129,20 @@ def first_image(data):
     page = doc.resolve(ref)
     xobjects = doc.resolve(doc.resolve(page[Name("Resources")])[Name("XObject")])
     return doc.resolve(next(iter(xobjects.values())))
+
+
+def page_annots(data, page_index):
+    doc = Document(data)
+    _d, ref, _i = doc.pages()[page_index]
+    annots = doc.resolve(doc.resolve(ref).get(Name("Annots")))
+    return [doc.resolve(a) for a in annots] if annots else []
+
+
+def decode_textstring(s):
+    if isinstance(s, String):
+        b = s.value
+        return b[2:].decode("utf-16-be") if b[:2] == b"\xfe\xff" else b.decode("latin-1")
+    return str(s)
 
 
 # --- tests -----------------------------------------------------------------
@@ -385,6 +403,59 @@ class ImagesTest(unittest.TestCase):
         return path
 
 
+class AnnotationsTest(unittest.TestCase):
+    def setUp(self):
+        self.src = build_source_pdf(3)
+
+    def test_text_note(self):
+        note = annotations.text_note(100, 700, "hello note", title="me")
+        out = ops.annotate(Document(self.src), {1: [note]})
+        annots = page_annots(out, 0)
+        self.assertEqual(len(annots), 1)
+        self.assertEqual(annots[0][Name("Subtype")], Name("Text"))
+        self.assertEqual(decode_textstring(annots[0][Name("Contents")]), "hello note")
+        self.assertEqual(page_annots(out, 1), [])  # only page 1 touched
+
+    def test_note_preserves_unicode(self):
+        note = annotations.text_note(50, 600, "メモ・マーカー 🖊")
+        out = ops.annotate(Document(self.src), {2: [note]})
+        self.assertEqual(decode_textstring(page_annots(out, 1)[0][Name("Contents")]), "メモ・マーカー 🖊")
+
+    def test_highlight_has_quadpoints_and_appearance(self):
+        hl = annotations.highlight([(72, 715, 360, 735)], color=annotations.COLORS["green"])
+        out = ops.annotate(Document(self.src), {1: [hl]})
+        annot = page_annots(out, 0)[0]
+        self.assertEqual(annot[Name("Subtype")], Name("Highlight"))
+        self.assertEqual(len(annot[Name("QuadPoints")]), 8)
+        self.assertIn(Name("AP"), annot)
+
+    def test_multiple_annots_one_page(self):
+        specs = [annotations.text_note(10, 10, "a"), annotations.highlight([(0, 0, 50, 20)])]
+        out = ops.annotate(Document(self.src), {1: specs})
+        self.assertEqual(len(page_annots(out, 0)), 2)
+
+    def test_annotations_survive_compress(self):
+        out = ops.annotate(Document(self.src), {1: [annotations.text_note(10, 10, "keep me")]})
+        comp = ops.compress(Document(out))
+        self.assertEqual(decode_textstring(page_annots(comp, 0)[0][Name("Contents")]), "keep me")
+
+    def test_annotations_follow_reorder(self):
+        out = ops.annotate(Document(self.src), {1: [annotations.text_note(10, 10, "tag1")]})
+        rev = ops.reorder(Document(out), [3, 2, 1])
+        # the annotated page (marker 0) is now last
+        self.assertEqual(page_markers(rev), [2, 1, 0])
+        self.assertEqual(len(page_annots(rev, 2)), 1)
+        self.assertEqual(page_annots(rev, 0), [])
+
+    def test_annotate_rejects_bad_page(self):
+        with self.assertRaises(ValueError):
+            ops.annotate(Document(self.src), {99: [annotations.text_note(1, 1, "x")]})
+
+    def test_highlight_rejects_empty_quads(self):
+        with self.assertRaises(ValueError):
+            ops.annotate(Document(self.src), {1: [annotations.highlight([])]})
+
+
 class CliTest(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
@@ -446,6 +517,140 @@ class CliTest(unittest.TestCase):
     def test_cli_reports_error_for_bad_range(self):
         out = self._out("bad.pdf")
         self.assertEqual(main(["select", self.src, out, "--pages", "99"]), 1)
+
+    def test_cli_note(self):
+        out = self._out("note.pdf")
+        rc = main(["note", self.src, out, "--page", "1", "--at", "100,700",
+                   "--text", "レビュー", "--color", "pink"])
+        self.assertEqual(rc, 0)
+        annots = page_annots(open(out, "rb").read(), 0)
+        self.assertEqual(annots[0][Name("Subtype")], Name("Text"))
+        self.assertEqual(decode_textstring(annots[0][Name("Contents")]), "レビュー")
+
+    def test_cli_highlight(self):
+        out = self._out("hl.pdf")
+        rc = main(["highlight", self.src, out, "--page", "2", "--rect", "10,20,200,40",
+                   "--color", "0.2,0.4,1.0"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(page_annots(open(out, "rb").read(), 1)[0][Name("Subtype")], Name("Highlight"))
+
+    def test_parse_color_and_rect(self):
+        from pdftoolkit.cli import parse_color, parse_rect
+        self.assertEqual(parse_color("yellow"), annotations.COLORS["yellow"])
+        self.assertEqual(parse_color("0.1,0.2,0.3"), (0.1, 0.2, 0.3))
+        self.assertEqual(parse_rect("1,2,3,4"), [1.0, 2.0, 3.0, 4.0])
+        with self.assertRaises(ValueError):
+            parse_color("1,2")
+
+
+class AppTest(unittest.TestCase):
+    """Exercise the web app's HTTP endpoints against a live local server."""
+
+    def setUp(self):
+        from pdftoolkit.app import make_server
+        self.dir = tempfile.mkdtemp()
+        self.path = os.path.join(self.dir, "doc.pdf")
+        with open(self.path, "wb") as fh:
+            fh.write(build_source_pdf(3))
+        self.server = make_server(self.dir, port=0)
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.addCleanup(self._teardown)
+
+    def _teardown(self):
+        self.server.shutdown()
+        self.thread.join(timeout=2)
+        for root, _dirs, files in os.walk(self.dir, topdown=False):
+            for f in files:
+                os.remove(os.path.join(root, f))
+            os.rmdir(root)
+
+    def _get(self, path):
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}") as r:
+                return r.status, r.read()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read()
+
+    def test_sources_only_local_without_token(self):
+        _s, body = self._get("/api/sources")
+        self.assertEqual(json.loads(body)["sources"], ["local"])
+
+    def test_files_lists_local_pdf(self):
+        _s, body = self._get("/api/files?source=local")
+        self.assertEqual([f["name"] for f in json.loads(body)["files"]], ["doc.pdf"])
+
+    def test_file_serves_pdf_bytes(self):
+        status, body = self._get("/file?source=local&id=doc.pdf")
+        self.assertEqual(status, 200)
+        self.assertTrue(body.startswith(b"%PDF"))
+
+    def test_path_traversal_is_contained(self):
+        status, _body = self._get("/file?source=local&id=" +
+                                  urllib.parse.quote("../../etc/passwd"))
+        self.assertEqual(status, 404)  # basename-only -> file not in dir
+
+    def test_annotate_endpoint_saves_back(self):
+        payload = json.dumps({
+            "source": "local", "id": "doc.pdf", "page": 1, "kind": "note",
+            "x": 100, "y": 700, "text": "サーバ経由メモ", "color": "pink",
+        }).encode()
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/annotate",
+                                     data=payload, method="POST")
+        with urllib.request.urlopen(req) as r:
+            self.assertTrue(json.loads(r.read())["ok"])
+        annots = page_annots(open(self.path, "rb").read(), 0)
+        self.assertEqual(decode_textstring(annots[0][Name("Contents")]), "サーバ経由メモ")
+
+
+class DriveStorageTest(unittest.TestCase):
+    """The Drive adapter builds the right REST calls -- checked with a fake
+    transport, no network."""
+
+    class _FakeResp:
+        def __init__(self, data):
+            self._data = data
+        def read(self):
+            return self._data
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    def _opener_factory(self, captured, payload):
+        def opener(req):
+            captured.append(req)
+            return self._FakeResp(payload)
+        return opener
+
+    def test_list_builds_query_and_auth(self):
+        from pdftoolkit.storage import DriveStorage
+        captured = []
+        payload = json.dumps({"files": [{"id": "abc", "name": "x.pdf"}]}).encode()
+        drive = DriveStorage("TOK", opener=self._opener_factory(captured, payload))
+        files = drive.list()
+        self.assertEqual(files, [{"id": "abc", "name": "x.pdf"}])
+        req = captured[0]
+        self.assertEqual(req.get_header("Authorization"), "Bearer TOK")
+        self.assertIn("mimeType%3D%27application%2Fpdf%27", req.full_url)
+
+    def test_read_uses_alt_media(self):
+        from pdftoolkit.storage import DriveStorage
+        captured = []
+        drive = DriveStorage("TOK", opener=self._opener_factory(captured, b"%PDF-bytes"))
+        self.assertEqual(drive.read("file42"), b"%PDF-bytes")
+        self.assertIn("/files/file42?alt=media", captured[0].full_url)
+
+    def test_write_patches_media(self):
+        from pdftoolkit.storage import DriveStorage
+        captured = []
+        drive = DriveStorage("TOK", opener=self._opener_factory(captured, b""))
+        drive.write("file42", b"data")
+        req = captured[0]
+        self.assertEqual(req.get_method(), "PATCH")
+        self.assertIn("uploadType=media", req.full_url)
+        self.assertEqual(req.data, b"data")
 
 
 if __name__ == "__main__":

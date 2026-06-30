@@ -101,11 +101,13 @@ PDF toolkit (from scratch, stdlib only):
 ```bash
 cd topics/pdf-toolkit
 python3 tests/test_pdftoolkit.py
-python3 -m pdftoolkit info some.pdf   # reorder / select / rotate / merge / split / img2pdf / compress
+python3 -m pdftoolkit info some.pdf   # reorder/select/rotate/merge/split/img2pdf/compress/note/highlight
+python3 -m pdftoolkit serve --dir .   # tabbed browser viewer/editor (open files, notes, highlights, Drive)
 ```
 
-See `topics/pdf-toolkit/README.md` for the full set of page operations and how
-the PDF object graph is parsed and rewritten without any third-party library.
+See `topics/pdf-toolkit/README.md` for the full set of page operations, the
+note/highlight annotations, the tabbed app, and how the PDF object graph is
+parsed and rewritten without any third-party library.
 
 ## Directory Map
 

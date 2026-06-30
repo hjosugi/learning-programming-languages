@@ -105,20 +105,25 @@ def _finalize_page(copied: dict) -> dict:
     return copied
 
 
-def build_pages(page_specs: list) -> bytes:
+def build_pages(page_specs: list, annots_by_index: dict = None) -> bytes:
     """Build a PDF from ``[(doc, page_ref, inherited, overrides)]``.
 
     ``inherited`` supplies attributes the page omits; ``overrides`` forcibly
     replaces attributes (used by rotate). Pages keep their original content
-    untouched.
+    untouched. ``annots_by_index`` maps a 0-based page index to a list of
+    annotation specs (see :mod:`pdftoolkit.annotations`) to append to that
+    page's ``/Annots``.
     """
+    from .annotations import build_annotation
+
+    annots_by_index = annots_by_index or {}
     b = Builder()
     catalog_num = b.alloc()
     pages_num = b.alloc()
     ref_map: dict = {}
     kids: list = []
 
-    for doc, page_ref, inherited, overrides in page_specs:
+    for index, (doc, page_ref, inherited, overrides) in enumerate(page_specs):
         key = (id(doc), page_ref.num, page_ref.gen) if isinstance(page_ref, Ref) else None
         new_num = b.alloc()
         if key is not None:
@@ -136,6 +141,19 @@ def build_pages(page_specs: list) -> bytes:
             copied[k] = v
         _finalize_page(copied)
         copied[Name("Parent")] = Ref(pages_num)
+
+        if index in annots_by_index:
+            existing = copied.get(Name("Annots"))
+            if isinstance(existing, list):
+                annot_refs = list(existing)
+            elif existing is None:
+                annot_refs = []
+            else:
+                annot_refs = [existing]
+            for spec in annots_by_index[index]:
+                annot_refs.append(build_annotation(b, Ref(new_num), spec))
+            copied[Name("Annots")] = annot_refs
+
         b.objects[new_num] = copied
         kids.append(Ref(new_num))
 

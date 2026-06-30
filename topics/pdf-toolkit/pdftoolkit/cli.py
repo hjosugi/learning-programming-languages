@@ -11,7 +11,7 @@ import argparse
 import os
 import sys
 
-from . import images, ops
+from . import annotations, images, ops
 
 
 def parse_pages(spec: str) -> list:
@@ -29,6 +29,23 @@ def parse_pages(spec: str) -> list:
         else:
             result.append(int(part))
     return result
+
+
+def parse_color(spec: str):
+    """Parse ``yellow`` (a named colour) or ``r,g,b`` (each 0..1)."""
+    if spec in annotations.COLORS:
+        return annotations.COLORS[spec]
+    parts = [float(x) for x in spec.split(",")]
+    if len(parts) != 3:
+        raise ValueError(f"colour must be a name {sorted(annotations.COLORS)} or r,g,b")
+    return tuple(parts)
+
+
+def parse_rect(spec: str):
+    parts = [float(x) for x in spec.split(",")]
+    if len(parts) != 4:
+        raise ValueError("rect must be x0,y0,x1,y1")
+    return parts
 
 
 def _write(path: str, data: bytes) -> None:
@@ -96,6 +113,30 @@ def _cmd_img2pdf(args) -> int:
     return 0
 
 
+def _cmd_note(args) -> int:
+    x, y = (float(v) for v in args.at.split(","))
+    spec = annotations.text_note(x, y, args.text, color=parse_color(args.color), title=args.title)
+    _write(args.output, ops.annotate(ops.load(args.input), {args.page: [spec]}))
+    print(f"wrote {args.output}")
+    return 0
+
+
+def _cmd_highlight(args) -> int:
+    spec = annotations.highlight([parse_rect(args.rect)], color=parse_color(args.color),
+                                 contents=args.text or "")
+    _write(args.output, ops.annotate(ops.load(args.input), {args.page: [spec]}))
+    print(f"wrote {args.output}")
+    return 0
+
+
+def _cmd_serve(args) -> int:
+    from .app import main as app_main
+    argv = ["--dir", args.dir, "--host", args.host, "--port", str(args.port)]
+    if args.drive_token:
+        argv += ["--drive-token", args.drive_token]
+    return app_main(argv)
+
+
 def _cmd_compress(args) -> int:
     before = os.path.getsize(args.input)
     data = ops.compress(ops.load(args.input))
@@ -161,10 +202,36 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--dpi", type=float, default=72.0)
     s.set_defaults(func=_cmd_img2pdf)
 
+    s = sub.add_parser("note", help="add a sticky-note comment at x,y (PDF points, origin bottom-left)")
+    s.add_argument("input")
+    s.add_argument("output")
+    s.add_argument("--page", type=int, required=True)
+    s.add_argument("--at", required=True, metavar="X,Y")
+    s.add_argument("--text", required=True)
+    s.add_argument("--title", default="")
+    s.add_argument("--color", default="yellow")
+    s.set_defaults(func=_cmd_note)
+
+    s = sub.add_parser("highlight", help="highlight a rectangle x0,y0,x1,y1 (PDF points)")
+    s.add_argument("input")
+    s.add_argument("output")
+    s.add_argument("--page", type=int, required=True)
+    s.add_argument("--rect", required=True, metavar="X0,Y0,X1,Y1")
+    s.add_argument("--text", default="")
+    s.add_argument("--color", default="yellow")
+    s.set_defaults(func=_cmd_highlight)
+
     s = sub.add_parser("compress", help="garbage-collect and Flate-compress")
     s.add_argument("input")
     s.add_argument("output")
     s.set_defaults(func=_cmd_compress)
+
+    s = sub.add_parser("serve", help="launch the tabbed browser viewer/editor")
+    s.add_argument("--dir", default=".", help="folder of PDFs to serve")
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--port", type=int, default=8000)
+    s.add_argument("--drive-token", default=os.environ.get("GDRIVE_TOKEN"))
+    s.set_defaults(func=_cmd_serve)
 
     return p
 

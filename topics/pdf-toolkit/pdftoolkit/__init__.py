@@ -15,8 +15,8 @@ Library entry points::
 CLI: ``python3 -m pdftoolkit --help``.
 """
 
-from . import images, ops
+from . import annotations, images, ops
 from .document import Document
 from .model import Name, Ref, Stream, String
 
-__all__ = ["ops", "images", "Document", "Name", "Ref", "Stream", "String"]
+__all__ = ["ops", "images", "annotations", "Document", "Name", "Ref", "Stream", "String"]
