@@ -22,3 +22,9 @@ mise exec -- zig build run
 - error handling with named error sets and error unions (e.g. the `wordfreq`
   CLI returns `error.InvalidTopArgument` from `parseArgs` on a non-numeric
   `--top` value; see the matching `test` in `src/main.zig`)
+
+## Further learning
+
+- Named learning targets + Definition of Done: [docs/2026-learning-items.md](docs/2026-learning-items.md)
+- Curated hands-on resources (2026 edition) and canonical primary sources:
+  [docs/learning-resources.md](docs/learning-resources.md)
